@@ -1,48 +1,62 @@
 import os
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from fastapi import FastAPI
 import yt_dlp
+from telegram import Update
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler,
+    ContextTypes, filters
+)
+from telegram.ext.fastapi import create_app as create_telegram_app
 
-BOT_TOKEN = "7710160278:AAEuNEnQOfIz2zNMWGWLLNCiNwiBn_4h-gw"
+BOT_TOKEN = os.getenv("BOT_TOKEN", "7710160278:AAEuNEnQOfIz2zNMWGWLLNCiNwiBn_4h-gw")
+WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
+WEBHOOK_URL = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}{WEBHOOK_PATH}"
 
-# --- Command Handlers ---
+# --- Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🎬 Send a YouTube link to download audio/video.")
 
 async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
-
     if "youtube.com" not in url and "youtu.be" not in url:
         return await update.message.reply_text("❌ Invalid YouTube URL.")
 
-    await update.message.reply_text("⏳ Downloading... Please wait.")
+    msg = await update.message.reply_text("⏳ Downloading... Please wait...")
 
     try:
         ydl_opts = {
-            'format': 'best',
+            'format': 'best[ext=mp4]/best',
             'outtmpl': 'video.%(ext)s',
-            'quiet': True
+            'quiet': True,
+            'noplaylist': True
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            file_name = ydl.prepare_filename(info)
+            file_path = ydl.prepare_filename(info)
 
-        # Send the downloaded file
-        with open(file_name, 'rb') as f:
+        if os.path.getsize(file_path) > 49 * 1024 * 1024:
+            await msg.edit_text("⚠️ File too large for Telegram (max 50MB).")
+            os.remove(file_path)
+            return
+
+        with open(file_path, 'rb') as f:
             await update.message.reply_video(video=f, caption="✅ Here's your video!")
 
-        os.remove(file_name)
+        os.remove(file_path)
 
     except Exception as e:
-        await update.message.reply_text(f"⚠️ Error: {e}")
+        await msg.edit_text(f"⚠️ Error: {e}")
 
-# --- Main Function ---
-def main():
-    app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download))
-    print("📥 YouTube Bot Running...")
-    app.run_polling()
+# --- FastAPI and Telegram Webhook ---
+app = FastAPI()
+bot_app = Application.builder().token(BOT_TOKEN).build()
 
-if __name__ == "__main__":
-    main()
+bot_app.add_handler(CommandHandler("start", start))
+bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download))
+
+telegram_app = create_telegram_app(bot_app, path=WEBHOOK_PATH)
+app.mount("/", telegram_app)
+
+@app.on_event("startup")
+async def set_webhook():
+    await bot_app.bot.set_webhook(url=WEBHOOK_URL)
