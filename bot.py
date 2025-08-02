@@ -5,7 +5,6 @@ import yt_dlp
 
 BOT_TOKEN = "7710160278:AAEuNEnQOfIz2zNMWGWLLNCiNwiBn_4h-gw"
 
-# --- Command Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🎬 Send a YouTube link to download audio/video.")
 
@@ -20,14 +19,17 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         ydl_opts = {
             'format': 'best',
-            'outtmpl': 'video.%(ext)s',
-            'quiet': True
+            'outtmpl': '%(title)s.%(ext)s',   # Unique filenames
+            'quiet': True,
+            'nocheckcertificate': True,
+            'noplaylist': True,
+            'cachedir': False  # Disable cache
         }
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             file_name = ydl.prepare_filename(info)
 
-        # Send the downloaded file
         with open(file_name, 'rb') as f:
             await update.message.reply_video(video=f, caption="✅ Here's your video!")
 
@@ -36,7 +38,6 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"⚠️ Error: {e}")
 
-# --- Main Function ---
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
