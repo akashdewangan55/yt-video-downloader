@@ -1,16 +1,9 @@
 import os
 from telegram import Update
-from telegram.ext import (
-    Application, CommandHandler, MessageHandler,
-    ContextTypes, filters
-)
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-
-if not BOT_TOKEN or not WEBHOOK_URL:
-    raise ValueError("BOT_TOKEN or WEBHOOK_URL not set!")
+BOT_TOKEN = "7710160278:AAEuNEnQOfIz2zNMWGWLLNCiNwiBn_4h-gw"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🎬 Send a YouTube link to download audio/video.")
@@ -26,11 +19,11 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         ydl_opts = {
             'format': 'best',
-            'outtmpl': '%(title)s.%(ext)s',
+            'outtmpl': '%(title)s.%(ext)s',   # Unique filenames
             'quiet': True,
             'nocheckcertificate': True,
             'noplaylist': True,
-            'cachedir': False
+            'cachedir': False  # Disable cache
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -47,15 +40,10 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download))
-
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=10000,
-        webhook_url=f"{WEBHOOK_URL}/webhook"
-    )
+    print("📥 YouTube Bot Running...")
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
